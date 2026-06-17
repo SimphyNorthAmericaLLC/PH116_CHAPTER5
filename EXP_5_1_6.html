@@ -1,0 +1,274 @@
+
+<style>
+  .ctrl { display:flex; align-items:center; gap:12px; margin-bottom:1rem; }
+  .ctrl label { font-size:13px; color:var(--color-text-secondary); min-width:130px; }
+  .ctrl span { font-size:13px; font-weight:500; min-width:40px; }
+</style>
+<h2 class="sr-only">Interactive white light dispersion: adjust angle of incidence and glass type to see the rainbow spread from a prism.</h2>
+
+<div style="padding:1rem 0 0.5rem;">
+  <div class="ctrl">
+    <label>Angle of incidence</label>
+    <input type="range" id="angle" min="25" max="70" value="45" step="1" style="flex:1;">
+    <span id="angleVal">45°</span>
+  </div>
+  <div class="ctrl">
+    <label>Refractive index (n)</label>
+    <input type="range" id="nIdx" min="140" max="180" value="152" step="1" style="flex:1;">
+    <span id="nVal">1.52</span>
+  </div>
+</div>
+
+<canvas id="cv" style="width:100%;border-radius:8px;display:block;"></canvas>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const aSlider = document.getElementById('angle');
+const nSlider = document.getElementById('nIdx');
+const aOut = document.getElementById('angleVal');
+const nOut = document.getElementById('nVal');
+
+// Cauchy dispersion offsets relative to reference n (at 570nm yellow)
+const BANDS = [
+  { label:'Violet', r:148, g:0,   b:211, dn: 0.020 },
+  { label:'Indigo', r:75,  g:0,   b:230, dn: 0.014 },
+  { label:'Blue',   r:0,   g:80,  b:255, dn: 0.009 },
+  { label:'Green',  r:0,   g:200, b:60,  dn: 0.004 },
+  { label:'Yellow', r:230, g:220, b:0,   dn: 0.000 },
+  { label:'Orange', r:255, g:110, b:0,   dn:-0.003 },
+  { label:'Red',    r:255, g:20,  b:0,   dn:-0.007 },
+];
+
+function toRad(d) { return d * Math.PI / 180; }
+function toDeg(r) { return r * 180 / Math.PI; }
+
+// Reflect vector v across normal n (both unit vectors)
+// Returns refracted direction using Snell's law vector form
+// n1*sin(t1) = n2*sin(t2)
+// Returns null on TIR
+function snellRefract(rayDir, normal, n1, n2) {
+  // rayDir and normal should point so that dot(rayDir, normal) < 0 (ray hits surface)
+  let cosI = -(rayDir.x*normal.x + rayDir.y*normal.y);
+  if (cosI < 0) { normal = {x:-normal.x, y:-normal.y}; cosI = -cosI; }
+  const ratio = n1/n2;
+  const sin2T = ratio*ratio*(1 - cosI*cosI);
+  if (sin2T > 1) return null; // TIR
+  const cosT = Math.sqrt(1 - sin2T);
+  return {
+    x: ratio*rayDir.x + (ratio*cosI - cosT)*normal.x,
+    y: ratio*rayDir.y + (ratio*cosI - cosT)*normal.y
+  };
+}
+
+// Intersect ray (origin + t*dir) with line segment (p1->p2)
+// Returns {t, u} where t>=0 along ray, u in [0,1] along segment
+function raySegIntersect(ox, oy, dx, dy, p1, p2) {
+  const ex = p2.x-p1.x, ey = p2.y-p1.y;
+  const denom = dx*ey - dy*ex;
+  if (Math.abs(denom)<1e-9) return null;
+  const tx = p1.x-ox, ty = p1.y-oy;
+  const t = (tx*ey - ty*ex)/denom;
+  const u = (tx*dy - ty*dx)/denom;
+  if (t<0.001 || u<-0.001 || u>1.001) return null;
+  return {t, u};
+}
+
+function normalize(v) {
+  const l = Math.hypot(v.x, v.y);
+  return {x: v.x/l, y: v.y/l};
+}
+
+function draw() {
+  const W = cv.offsetWidth;
+  const H = Math.round(W * 0.58);
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = W*dpr; cv.height = H*dpr;
+  cv.style.height = H+'px';
+  ctx.scale(dpr, dpr);
+
+  const incDeg = parseInt(aSlider.value);
+  const nBase  = parseInt(nSlider.value)/100;
+  aOut.textContent = incDeg + '°';
+  nOut.textContent = nBase.toFixed(2);
+
+  // Dark background
+  ctx.fillStyle = '#0b0b18';
+  ctx.fillRect(0,0,W,H);
+
+  // --- Prism vertices (equilateral-ish, apex up) ---
+  const cx = W*0.36;
+  const apexY = H*0.10;
+  const baseY = H*0.88;
+  const halfBase = (baseY - apexY) * Math.tan(toRad(30));
+  const A = {x: cx,            y: apexY};   // apex
+  const B = {x: cx - halfBase, y: baseY};   // bottom-left
+  const C = {x: cx + halfBase, y: baseY};   // bottom-right
+
+  // Draw prism
+  ctx.beginPath();
+  ctx.moveTo(A.x,A.y); ctx.lineTo(B.x,B.y); ctx.lineTo(C.x,C.y); ctx.closePath();
+  ctx.fillStyle = 'rgba(140,200,255,0.07)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(140,200,255,0.45)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+
+  // Left face: A -> B
+  // Outward normal of left face (pointing left-outward)
+  const leftFaceDir = normalize({x: B.x-A.x, y: B.y-A.y});
+  const leftNormOut = normalize({x: leftFaceDir.y, y: -leftFaceDir.x}); // rotate 90° CCW → outward (left)
+  // Make sure it points outward (away from prism interior, i.e. leftward)
+  // Interior is to the right of A->B direction, so outward is left: x should be negative
+  const leftNorm = leftNormOut.x < 0 ? leftNormOut : {x:-leftNormOut.x, y:-leftNormOut.y};
+
+  // Right face: A -> C
+  const rightFaceDir = normalize({x: C.x-A.x, y: C.y-A.y});
+  const rightNormOut = normalize({x: -rightFaceDir.y, y: rightFaceDir.x}); // rotate 90° CW → outward (right)
+  const rightNorm = rightNormOut.x > 0 ? rightNormOut : {x:-rightNormOut.x, y:-rightNormOut.y};
+
+  // --- Entry point on left face ---
+  const entryT = 0.40; // fraction along A->B
+  const entryPt = {
+    x: A.x + (B.x-A.x)*entryT,
+    y: A.y + (B.y-A.y)*entryT
+  };
+
+  // --- Incident ray direction ---
+  // Angle of incidence measured from outward normal of left face
+  // Incident ray arrives from outside, so it travels inward
+  // We rotate the inward normal (-leftNorm) by incDeg around entry point
+  const incRad = toRad(incDeg);
+  // Inward normal direction
+  const inNorm = {x: -leftNorm.x, y: -leftNorm.y};
+  // Incident ray: rotate inNorm by +incDeg (about z-axis, i.e. in 2D)
+  // The incident ray should come from upper-left, going toward entry
+  const sinI = Math.sin(incRad), cosI = Math.cos(incRad);
+  // Rotate inNorm by -incDeg to get incident direction
+  const incDir = normalize({
+    x: inNorm.x*cosI + inNorm.y*sinI,
+    y: -inNorm.x*sinI + inNorm.y*cosI
+  });
+  // incDir points FROM source TOWARD entry (into prism)
+  // Source point
+  const srcLen = Math.min(W, H) * 0.32;
+  const src = {x: entryPt.x - incDir.x*srcLen, y: entryPt.y - incDir.y*srcLen};
+
+  // Draw white incident beam
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,255,255,0.5)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(src.x, src.y);
+  ctx.lineTo(entryPt.x, entryPt.y);
+  ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // "White light" label
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.65)';
+  ctx.font = `12px sans-serif`;
+  const lx = (src.x+entryPt.x)/2, ly = (src.y+entryPt.y)/2;
+  ctx.fillText('White light', lx - 50, ly - 10);
+  ctx.restore();
+
+  // Normal dashed line at entry
+  ctx.save();
+  ctx.setLineDash([5,5]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(entryPt.x + leftNorm.x*60, entryPt.y + leftNorm.y*60);
+  ctx.lineTo(entryPt.x - leftNorm.x*80, entryPt.y - leftNorm.y*80);
+  ctx.stroke();
+  ctx.restore();
+
+  // --- Trace each wavelength ---
+  let spreadAngles = [];
+
+  BANDS.forEach((band, bi) => {
+    const n = nBase + band.dn;
+
+    // Refract at entry (air n1=1 -> glass n2=n)
+    // leftNorm points outward; snellRefract needs surface normal pointing toward incoming ray side
+    // incoming ray side is outside (leftNorm direction)
+    const refr1 = snellRefract(incDir, leftNorm, 1.0, n);
+    if (!refr1) return;
+    const intDir = normalize(refr1);
+
+    // Find exit on right face (A->C)
+    const hit = raySegIntersect(entryPt.x, entryPt.y, intDir.x, intDir.y, A, C);
+    if (!hit) return;
+    const exitPt = {
+      x: entryPt.x + intDir.x*hit.t,
+      y: entryPt.y + intDir.y*hit.t
+    };
+
+    // Refract at exit (glass n -> air 1)
+    // rightNorm points outward from prism (to the right)
+    // Ray is going from inside toward outside, so inward normal for snell is -rightNorm
+    const refr2 = snellRefract(intDir, {x:-rightNorm.x, y:-rightNorm.y}, n, 1.0);
+    if (!refr2) return;
+    const exitDir = normalize(refr2);
+
+    // Draw internal ray
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(entryPt.x, entryPt.y);
+    ctx.lineTo(exitPt.x, exitPt.y);
+    ctx.strokeStyle = `rgba(${band.r},${band.g},${band.b},0.25)`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Draw exit ray
+    const exitLen = Math.min(W, H) * 0.55;
+    const endPt = {x: exitPt.x + exitDir.x*exitLen, y: exitPt.y + exitDir.y*exitLen};
+
+    ctx.save();
+    ctx.shadowColor = `rgba(${band.r},${band.g},${band.b},0.7)`;
+    ctx.shadowBlur = 9;
+    ctx.beginPath();
+    ctx.moveTo(exitPt.x, exitPt.y);
+    ctx.lineTo(endPt.x, endPt.y);
+    ctx.strokeStyle = `rgba(${band.r},${band.g},${band.b},0.92)`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+
+    // Label at end
+    const ang = toDeg(Math.atan2(exitDir.y, exitDir.x));
+    spreadAngles.push(ang);
+    if (endPt.x > 0 && endPt.x < W && endPt.y > 0 && endPt.y < H) {
+      ctx.save();
+      ctx.fillStyle = `rgba(${band.r},${band.g},${band.b},0.85)`;
+      ctx.font = '11px sans-serif';
+      ctx.fillText(band.label, endPt.x + 5, endPt.y + 4);
+      ctx.restore();
+    }
+  });
+
+  // Info overlay
+  ctx.save();
+  ctx.fillStyle = 'rgba(255,255,255,0.09)';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(10,10,185,58,6); else ctx.rect(10,10,185,58);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.55)';
+  ctx.font = '11.5px sans-serif';
+  if (spreadAngles.length >= 2) {
+    const spread = Math.abs(spreadAngles[0] - spreadAngles[spreadAngles.length-1]).toFixed(1);
+    ctx.fillText(`Dispersion spread: ${spread}°`, 18, 32);
+  }
+  ctx.fillText(`n (glass) ≈ ${nBase.toFixed(2)}`, 18, 50);
+  ctx.fillText(`Incidence: ${incDeg}°`, 18, 68);
+  ctx.restore();
+}
+
+aSlider.addEventListener('input', draw);
+nSlider.addEventListener('input', draw);
+window.addEventListener('resize', draw);
+draw();
+</script>

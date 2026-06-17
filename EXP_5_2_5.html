@@ -1,0 +1,302 @@
+
+<h2 class="sr-only">Interactive thin film interference widget: shows how light reflecting off the top and bottom surfaces of a thin film creates constructive or destructive interference depending on film thickness and refractive index.</h2>
+
+<style>
+  .ctrl { display:flex; align-items:center; gap:12px; margin-bottom:0.75rem; }
+  .ctrl label { font-size:13px; color:var(--color-text-secondary); min-width:150px; }
+  .ctrl span { font-size:13px; font-weight:500; min-width:52px; text-align:right; color:var(--color-text-primary); }
+  #cv { display:block; width:100%; border-radius:var(--border-radius-md); margin:1rem 0; }
+  .info-row { display:flex; gap:12px; flex-wrap:wrap; margin-top:0.5rem; }
+  .chip { font-size:12px; padding:4px 12px; border-radius:var(--border-radius-md); border:0.5px solid var(--color-border-tertiary); background:var(--color-background-secondary); color:var(--color-text-secondary); }
+  .chip strong { font-weight:500; color:var(--color-text-primary); }
+</style>
+
+<div style="padding:1rem 0 0;">
+  <div class="ctrl">
+    <label>Film thickness (nm)</label>
+    <input type="range" id="thick" min="50" max="800" value="200" step="5" style="flex:1;">
+    <span id="thickOut">200 nm</span>
+  </div>
+  <div class="ctrl">
+    <label>Refractive index n</label>
+    <input type="range" id="nIdx" min="100" max="300" value="150" step="1" style="flex:1;">
+    <span id="nOut">1.50</span>
+  </div>
+</div>
+
+<canvas id="cv" height="340"></canvas>
+
+<div class="info-row" id="infoRow"></div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const tSlider = document.getElementById('thick');
+const nSlider = document.getElementById('nIdx');
+const tOut = document.getElementById('thickOut');
+const nOut = document.getElementById('nOut');
+const infoRow = document.getElementById('infoRow');
+
+const WAVELENGTHS = [
+  { nm:410, r:160, g:0,   b:200 },
+  { nm:440, r:80,  g:0,   b:255 },
+  { nm:470, r:0,   g:80,  b:255 },
+  { nm:500, r:0,   g:200, b:120 },
+  { nm:530, r:50,  g:220, b:0   },
+  { nm:560, r:180, g:220, b:0   },
+  { nm:590, r:255, g:170, b:0   },
+  { nm:620, g:0,   r:255, b:0   },
+  { nm:650, r:255, g:20,  b:0   },
+  { nm:680, r:200, g:0,   b:0   },
+];
+
+function reflectance(t, n, lambda) {
+  // Phase difference for normal incidence (vertical)
+  // Ray 1: reflects off top surface (air→film, phase flip +π)
+  // Ray 2: travels 2t through film, reflects off bottom (film→air or film→substrate)
+  // If n_film > n_air (top), ray1 gets π phase shift
+  // If n_substrate > n_film (bottom), ray2 also gets π shift — shifts cancel
+  // Net OPD = 2*n*t, constructive when 2nt = m*lambda, destructive when = (m+0.5)*lambda
+  // We assume substrate denser than film: both reflections flip → net delta = 2nt/lambda * 2π
+  const delta = (4 * Math.PI * n * t) / lambda;
+  // Simplified equal-amplitude Fabry–Perot: I ∝ cos²(delta/2)
+  return Math.pow(Math.cos(delta / 2), 2);
+}
+
+function nmToRGB(wl) {
+  const w = WAVELENGTHS;
+  for (let i = 0; i < w.length - 1; i++) {
+    if (wl >= w[i].nm && wl <= w[i+1].nm) {
+      const f = (wl - w[i].nm) / (w[i+1].nm - w[i].nm);
+      return {
+        r: Math.round(w[i].r + (w[i+1].r - w[i].r)*f),
+        g: Math.round(w[i].g + (w[i+1].g - w[i].g)*f),
+        b: Math.round(w[i].b + (w[i+1].b - w[i].b)*f)
+      };
+    }
+  }
+  return wl < 410 ? {r:160,g:0,b:200} : {r:200,g:0,b:0};
+}
+
+function blendColor(t, n) {
+  let R = 0, G = 0, B = 0, total = 0;
+  for (let lambda = 380; lambda <= 700; lambda += 5) {
+    const I = reflectance(t, n, lambda);
+    const {r,g,b} = nmToRGB(lambda);
+    R += r * I; G += g * I; B += b * I; total += I;
+  }
+  if (total < 0.01) return {r:0,g:0,b:0,a:0};
+  return {r: R/total, g: G/total, b: B/total, a: Math.min(1, total/20)};
+}
+
+function dominantStatus(t, n) {
+  let maxI = 0, maxLambda = 550;
+  for (let lambda = 380; lambda <= 700; lambda += 5) {
+    const I = reflectance(t, n, lambda);
+    if (I > maxI) { maxI = I; maxLambda = lambda; }
+  }
+  const {r,g,b} = nmToRGB(maxLambda);
+  return { lambda: maxLambda, I: maxI, r, g, b };
+}
+
+function draw() {
+  const t = parseInt(tSlider.value);
+  const n = parseInt(nSlider.value) / 100;
+  tOut.textContent = t + ' nm';
+  nOut.textContent = n.toFixed(2);
+
+  const W = cv.offsetWidth;
+  const H = 340;
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = W * dpr; cv.height = H * dpr;
+  cv.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+
+  const isDark = getComputedStyle(document.body).colorScheme === 'dark'
+    || window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  const bg = isDark ? '#111118' : '#f5f5f0';
+  const textColor = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.6)';
+  const filmBg = isDark ? 'rgba(100,160,255,0.12)' : 'rgba(80,130,220,0.10)';
+  const subBg = isDark ? '#333320' : '#d4c89a';
+  const airColor = isDark ? '#1a1a2a' : '#e8eaf6';
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const margin = 40;
+  const diagramW = W * 0.46;
+  const diagramLeft = margin;
+  const airH = 80;
+  const filmH = Math.max(18, Math.min(110, t / 4.5));
+  const subH = 50;
+  const totalH = airH + filmH + subH;
+  const topY = (H - totalH) / 2;
+
+  // --- Draw air region ---
+  ctx.fillStyle = airColor;
+  ctx.fillRect(diagramLeft, topY, diagramW, airH);
+  ctx.fillStyle = textColor;
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Air  (n = 1.00)', diagramLeft + 8, topY + 16);
+
+  // --- Draw film ---
+  const filmY = topY + airH;
+  ctx.fillStyle = filmBg;
+  ctx.fillRect(diagramLeft, filmY, diagramW, filmH);
+  ctx.strokeStyle = isDark ? 'rgba(120,180,255,0.35)' : 'rgba(60,100,200,0.3)';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(diagramLeft, filmY, diagramW, filmH);
+
+  // Film label
+  ctx.fillStyle = textColor;
+  ctx.font = '12px sans-serif';
+  const filmLabel = `Thin film  (n = ${n.toFixed(2)},  d = ${t} nm)`;
+  const fmid = filmY + filmH / 2 + 4;
+  ctx.fillText(filmLabel, diagramLeft + 8, fmid);
+
+  // --- Draw substrate ---
+  const subY = filmY + filmH;
+  ctx.fillStyle = subBg;
+  ctx.fillRect(diagramLeft, subY, diagramW, subH);
+  ctx.fillStyle = isDark ? 'rgba(255,240,180,0.6)' : 'rgba(80,60,20,0.65)';
+  ctx.font = '12px sans-serif';
+  ctx.fillText('Substrate  (n > film)', diagramLeft + 8, subY + 18);
+
+  // --- Surface borders ---
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(diagramLeft, filmY); ctx.lineTo(diagramLeft+diagramW, filmY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(diagramLeft, subY); ctx.lineTo(diagramLeft+diagramW, subY); ctx.stroke();
+
+  // --- Incoming white ray ---
+  const rayX = diagramLeft + diagramW * 0.30;
+  const incStart = { x: rayX - 18, y: topY + 2 };
+  const incEnd = { x: rayX, y: filmY };
+
+  // Draw white beam
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath(); ctx.moveTo(incStart.x, incStart.y); ctx.lineTo(incEnd.x, incEnd.y); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.45)';
+  ctx.font = '11px sans-serif';
+  ctx.fillText('White light', incStart.x - 42, incStart.y + 6);
+
+  // --- Ray 1: reflects off top surface ---
+  const r1End = { x: rayX - 36, y: topY + 2 };
+  const r1Color = blendColor(t, n);
+  const r1Str = `rgba(${Math.round(r1Color.r)},${Math.round(r1Color.g)},${Math.round(r1Color.b)},${Math.min(1, r1Color.a + 0.5)})`;
+  ctx.save();
+  ctx.strokeStyle = r1Str;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(rayX, filmY); ctx.lineTo(r1End.x, r1End.y); ctx.stroke();
+  ctx.restore();
+
+  // --- Ray 2: refracts into film, reflects off bottom, exits top ---
+  const midX = rayX + 12;
+  const r2End = { x: rayX + 30, y: topY + 2 };
+  ctx.save();
+  ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.18)';
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(rayX, filmY); ctx.lineTo(midX, subY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(midX, subY); ctx.lineTo(rayX + 24, filmY); ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.strokeStyle = r1Str;
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(rayX + 24, filmY); ctx.lineTo(r2End.x, r2End.y); ctx.stroke();
+  ctx.restore();
+
+  // Phase labels for rays
+  ctx.fillStyle = textColor;
+  ctx.font = '11px sans-serif';
+  ctx.fillText('R₁', r1End.x - 18, r1End.y + 4);
+  ctx.fillText('R₂', r2End.x + 3, r2End.y + 4);
+
+  // --- Interference label ---
+  const dom = dominantStatus(t, n);
+  const I_avg = reflectance(t, n, dom.lambda);
+  const isConstructive = I_avg > 0.7;
+  const isDestructive = I_avg < 0.15;
+  const statusText = isConstructive ? 'Constructive' : isDestructive ? 'Destructive' : 'Partial';
+  const statusColor = isConstructive
+    ? (isDark ? '#6fefa0' : '#1a7a3a')
+    : isDestructive
+      ? (isDark ? '#fa7a7a' : '#a02020')
+      : (isDark ? '#f0c060' : '#8a6010');
+
+  ctx.font = '500 13px sans-serif';
+  ctx.fillStyle = statusColor;
+  ctx.fillText(`${statusText} interference`, diagramLeft + 8, topY + airH - 8);
+
+  // OPD annotation
+  const opd = (2 * n * t).toFixed(1);
+  ctx.fillStyle = textColor;
+  ctx.font = '11px sans-serif';
+  ctx.fillText(`OPD = 2nd = ${opd} nm`, diagramLeft + 8, subY + subH - 6);
+
+  // --- Spectrum strip (right side) ---
+  const specLeft = diagramLeft + diagramW + 30;
+  const specW = W - specLeft - margin;
+  const specTop = topY;
+  const specH = totalH;
+
+  // Label above strip
+  ctx.fillStyle = textColor;
+  ctx.font = '12px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Reflected intensity', specLeft + specW/2, specTop - 10);
+  ctx.textAlign = 'left';
+
+  // Draw spectrum with intensity modulated by reflectance
+  for (let py = 0; py < specH; py++) {
+    const lambda = 380 + (700 - 380) * (py / specH);
+    const I = reflectance(t, n, lambda);
+    const {r,g,b} = nmToRGB(lambda);
+    ctx.fillStyle = `rgba(${r},${g},${b},${(0.12 + I * 0.88).toFixed(2)})`;
+    ctx.fillRect(specLeft, specTop + py, specW, 1.5);
+  }
+
+  // Wavelength axis labels
+  ctx.fillStyle = textColor;
+  ctx.font = '11px sans-serif';
+  ctx.textAlign = 'right';
+  [380, 450, 530, 620, 700].forEach(lam => {
+    const py = specTop + specH * ((lam - 380) / 320);
+    ctx.fillText(lam + ' nm', specLeft - 4, py + 4);
+    // tick
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(specLeft, py); ctx.lineTo(specLeft + 5, py); ctx.stroke();
+  });
+  ctx.textAlign = 'left';
+
+  // Dominant wavelength marker
+  const domY = specTop + specH * ((dom.lambda - 380) / 320);
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(specLeft, domY); ctx.lineTo(specLeft + specW, domY); ctx.stroke();
+  ctx.restore();
+
+  // --- Info chips ---
+  const OPD = 2 * n * t;
+  const m = Math.round(OPD / dom.lambda * 10) / 10;
+  infoRow.innerHTML = `
+    <div class="chip">Optical path diff: <strong>${OPD.toFixed(0)} nm</strong></div>
+    <div class="chip">Peak reflected: <strong>${dom.lambda} nm</strong></div>
+    <div class="chip">Order m ≈ <strong>${m.toFixed(1)}</strong></div>
+    <div class="chip" style="color:${statusColor}"><strong>${statusText}</strong> at peak</div>
+  `;
+}
+
+tSlider.addEventListener('input', draw);
+nSlider.addEventListener('input', draw);
+window.addEventListener('resize', draw);
+draw();
+</script>

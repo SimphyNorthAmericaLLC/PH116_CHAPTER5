@@ -1,0 +1,264 @@
+<div style="padding: 1rem 0;">
+<h2 class="sr-only">Interactive step-by-step derivation of the Fresnel reflection and transmission coefficients for s-polarized light at a dielectric interface.</h2>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem; gap: 12px;">
+  <div style="display: flex; gap: 6px;" id="dots"></div>
+  <div style="font-size: 13px; color: var(--color-text-secondary);" id="step-counter">Step 1 of 6</div>
+</div>
+
+<div id="stage" style="background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 1rem; min-height: 380px;">
+  <svg id="diagram" width="100%" viewBox="0 0 680 360" role="img" style="display:block;"><title>s-polarization interface diagram</title><desc>Incident, reflected, and transmitted waves at a planar interface with E-field perpendicular to plane of incidence.</desc></svg>
+</div>
+
+<div id="explanation" style="margin: 1rem 0; font-size: 14px; line-height: 1.7; color: var(--color-text-primary); min-height: 90px;"></div>
+
+<div id="equation" style="background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-md); padding: 14px; font-family: var(--font-mono); font-size: 14px; text-align: center; min-height: 48px; display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px;"></div>
+
+<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 1rem; gap: 8px;">
+  <button id="prev" onclick="step(-1)">← Previous</button>
+  <div style="display: flex; gap: 8px;">
+    <button onclick="sendPrompt('Can you also derive the Fresnel coefficients for p-polarization?')">p-polarization ↗</button>
+    <button onclick="sendPrompt('Show me Brewster\\'s angle and how it relates to the Fresnel coefficients')">Brewster's angle ↗</button>
+  </div>
+  <button id="next" onclick="step(1)">Next →</button>
+</div>
+
+<div style="margin-top: 14px; display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--color-text-secondary);">
+  <label for="theta">θᵢ</label>
+  <input type="range" id="theta" min="5" max="80" step="1" value="35" style="flex: 1;">
+  <span id="theta-val" style="min-width: 36px; text-align: right;">35°</span>
+  <label for="ratio" style="margin-left: 12px;">n₂/n₁</label>
+  <input type="range" id="ratio" min="0.6" max="2.5" step="0.05" value="1.5" style="width: 110px;">
+  <span id="ratio-val" style="min-width: 32px; text-align: right;">1.50</span>
+</div>
+</div>
+
+<script>
+const steps = [
+  {
+    title: "1. The geometry: s-polarization",
+    text: "We set up a plane wave hitting a flat interface between two non-magnetic media (n₁, n₂). For <b>s-polarization</b> (also called TE or transverse-electric), the electric field E points <b>perpendicular to the plane of incidence</b> — out of the page in our diagram. The magnetic field B lies in the plane of incidence.",
+    eq: "E ⊥ plane of incidence,&nbsp;&nbsp; B ∥ plane of incidence",
+    draw: "geometry"
+  },
+  {
+    title: "2. Three waves at the boundary",
+    text: "Three plane waves coexist: incident (E_i), reflected (E_r), and transmitted (E_t). All E-fields point in the same direction (⊙ out of page). Snell's law fixes the angles: n₁ sin θᵢ = n₂ sin θₜ. We define <b>r_s = E_r / E_i</b> and <b>t_s = E_t / E_i</b>.",
+    eq: "n₁ sin θᵢ = n₂ sin θₜ",
+    draw: "waves"
+  },
+  {
+    title: "3. Boundary condition: E is continuous",
+    text: "Maxwell's equations require the <b>tangential</b> component of E to be continuous across the interface. Since E is entirely tangential (perpendicular to plane of incidence ⇒ parallel to surface), the full amplitudes simply add on each side:",
+    eq: "E_i + E_r = E_t",
+    draw: "bc_E"
+  },
+  {
+    title: "4. Boundary condition: tangential H is continuous",
+    text: "The tangential component of H is also continuous (no surface currents). With H = E/η and only the in-plane component counting, each wave contributes its H amplitude times cos θ. The reflected wave travels backward, so its tangential H opposes the incident:",
+    eq: "(E_i − E_r) cos θᵢ / η₁ = E_t cos θₜ / η₂",
+    draw: "bc_H"
+  },
+  {
+    title: "5. Solve the two equations",
+    text: "We have two equations in two unknowns (E_r, E_t). Substitute E_t = E_i + E_r from step 3 into step 4, then solve for r_s = E_r / E_i. Using n = c/v and η = η₀/n for non-magnetic media, the result can be written in either index or impedance form.",
+    eq: "Two equations, two unknowns → solve algebraically",
+    draw: "algebra"
+  },
+  {
+    title: "6. The Fresnel coefficients for s-polarization",
+    text: "The reflection and transmission coefficients are shown below. Use the sliders above to see how r_s and t_s vary with the angle of incidence θᵢ and the index ratio n₂/n₁. Notice: r_s is <b>always negative</b> when n₂ > n₁ (a 180° phase flip on reflection) and there is <b>no Brewster's angle</b> for s-polarization — |r_s| never reaches zero.",
+    eq: "r_s = (n₁ cos θᵢ − n₂ cos θₜ) / (n₁ cos θᵢ + n₂ cos θₜ)<br>t_s = 2 n₁ cos θᵢ / (n₁ cos θᵢ + n₂ cos θₜ)",
+    draw: "result"
+  }
+];
+
+let current = 0;
+
+function $(id) { return document.getElementById(id); }
+
+function renderDots() {
+  const dots = $('dots');
+  dots.innerHTML = '';
+  for (let i = 0; i < steps.length; i++) {
+    const d = document.createElement('div');
+    d.style.cssText = 'width:8px;height:8px;border-radius:50%;background:' +
+      (i === current ? 'var(--color-text-primary)' : 'var(--color-border-secondary)') +
+      ';transition:background .2s;cursor:pointer;';
+    d.onclick = () => { current = i; render(); };
+    dots.appendChild(d);
+  }
+}
+
+function render() {
+  const s = steps[current];
+  $('step-counter').textContent = 'Step ' + (current + 1) + ' of ' + steps.length;
+  $('explanation').innerHTML = '<div style="font-weight:500;margin-bottom:6px;">' + s.title + '</div>' + s.text;
+  $('equation').innerHTML = s.eq;
+  $('prev').disabled = current === 0;
+  $('next').disabled = current === steps.length - 1;
+  $('prev').style.opacity = current === 0 ? 0.4 : 1;
+  $('next').style.opacity = current === steps.length - 1 ? 0.4 : 1;
+  renderDots();
+  drawDiagram(s.draw);
+}
+
+function step(dir) {
+  current = Math.max(0, Math.min(steps.length - 1, current + dir));
+  render();
+}
+
+function drawDiagram(mode) {
+  const theta = parseInt($('theta').value);
+  const ratio = parseFloat($('ratio').value);
+  const thetaR = theta * Math.PI / 180;
+  const sinT = Math.sin(thetaR) / ratio;
+  const thetaT = Math.asin(Math.min(1, Math.max(-1, sinT)));
+  const tir = Math.abs(sinT) > 1;
+
+  // origin = interface center
+  const cx = 340, cy = 180;
+  const L = 130;
+
+  // incident: from upper-left to origin
+  const ix1 = cx - L * Math.sin(thetaR);
+  const iy1 = cy - L * Math.cos(thetaR);
+  // reflected: from origin to upper-right
+  const rx2 = cx + L * Math.sin(thetaR);
+  const ry2 = cy - L * Math.cos(thetaR);
+  // transmitted: from origin to lower-right
+  const tx2 = cx + L * Math.sin(thetaT);
+  const ty2 = cy + L * Math.cos(thetaT);
+
+  const svg = $('diagram');
+  let html = `
+    <defs>
+      <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+        <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </marker>
+    </defs>
+    <!-- Media labels and shading -->
+    <rect x="40" y="40" width="600" height="140" fill="#E6F1FB" opacity="0.35"/>
+    <rect x="40" y="180" width="600" height="140" fill="#FAEEDA" opacity="0.45"/>
+    <line x1="40" y1="180" x2="640" y2="180" stroke="var(--color-text-primary)" stroke-width="1.2"/>
+    <text class="t" x="56" y="62" fill="#0C447C">Medium 1 (n₁)</text>
+    <text class="t" x="56" y="306" fill="#854F0B">Medium 2 (n₂)</text>
+    <!-- Normal -->
+    <line x1="${cx}" y1="60" x2="${cx}" y2="300" stroke="var(--color-text-secondary)" stroke-width="0.5" stroke-dasharray="4 4"/>
+  `;
+
+  // Rays
+  const drawRay = (x1, y1, x2, y2, color, label, lx, ly, fade) => {
+    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="2" marker-end="url(#arr)" opacity="${fade}"/>
+            <text class="th" x="${lx}" y="${ly}" fill="${color}" opacity="${fade}">${label}</text>`;
+  };
+
+  // angle arcs
+  const arcI = `<path d="M ${cx} ${cy - 30} A 30 30 0 0 0 ${cx - 30 * Math.sin(thetaR)} ${cy - 30 * Math.cos(thetaR)}" fill="none" stroke="var(--color-text-secondary)" stroke-width="0.5"/>`;
+  const arcR = `<path d="M ${cx + 30 * Math.sin(thetaR)} ${cy - 30 * Math.cos(thetaR)} A 30 30 0 0 0 ${cx} ${cy - 30}" fill="none" stroke="var(--color-text-secondary)" stroke-width="0.5"/>`;
+  const arcT = `<path d="M ${cx} ${cy + 30} A 30 30 0 0 0 ${cx + 30 * Math.sin(thetaT)} ${cy + 30 * Math.cos(thetaT)}" fill="none" stroke="var(--color-text-secondary)" stroke-width="0.5"/>`;
+
+  // E-field circles (out-of-page dot ⊙)
+  const efield = (x, y, color, op) =>
+    `<circle cx="${x}" cy="${y}" r="6" fill="none" stroke="${color}" stroke-width="1.2" opacity="${op}"/>
+     <circle cx="${x}" cy="${y}" r="1.6" fill="${color}" opacity="${op}"/>`;
+
+  // Default rays present in all modes except 'geometry' (which shows only one)
+  if (mode === 'geometry') {
+    // single incident ray, emphasis on E-field direction
+    html += drawRay(ix1, iy1, cx, cy, '#185FA5', 'k_i', ix1 - 30, iy1 - 8, 1);
+    html += arcI;
+    html += `<text class="ts" x="${cx - 22}" y="${cy - 12}" fill="var(--color-text-secondary)">θᵢ</text>`;
+    // E ⊙ symbols along the ray
+    html += efield((ix1 + cx) / 2, (iy1 + cy) / 2 - 14, '#993C1D', 1);
+    html += `<text class="ts" x="${(ix1 + cx) / 2 + 14}" y="${(iy1 + cy) / 2 - 10}" fill="#993C1D">E ⊙ (out of page)</text>`;
+    // B vector in plane
+    const bx = (ix1 + cx) / 2 + 18 * Math.cos(thetaR);
+    const by = (iy1 + cy) / 2 - 18 * Math.sin(thetaR);
+    const bx2 = bx + 28 * Math.cos(thetaR);
+    const by2 = by - 28 * Math.sin(thetaR);
+    html += `<line x1="${bx}" y1="${by}" x2="${bx2}" y2="${by2}" stroke="#3B6D11" stroke-width="1.5" marker-end="url(#arr)"/>`;
+    html += `<text class="ts" x="${bx2 + 6}" y="${by2}" fill="#3B6D11">B</text>`;
+    html += `<text class="ts" x="50" y="340" fill="var(--color-text-secondary)">Plane of incidence = plane of the page</text>`;
+  } else {
+    // All three rays
+    const inc = (mode === 'bc_E' || mode === 'bc_H' || mode === 'algebra' || mode === 'result' || mode === 'waves') ? 1 : 0.3;
+    const refl = inc;
+    const trans = tir ? 0.25 : inc;
+
+    html += drawRay(ix1, iy1, cx, cy, '#185FA5', 'E_i', ix1 - 28, iy1, inc);
+    html += drawRay(cx, cy, rx2, ry2, '#A32D2D', 'E_r', rx2 + 6, ry2, refl);
+    if (!tir) {
+      html += drawRay(cx, cy, tx2, ty2, '#3B6D11', 'E_t', tx2 + 6, ty2 + 4, trans);
+    } else {
+      // total internal reflection — show evanescent hint
+      html += `<text class="ts" x="${cx + 20}" y="${cy + 40}" fill="#A32D2D">total internal reflection</text>`;
+    }
+
+    html += arcI + arcR;
+    if (!tir) html += arcT;
+    html += `<text class="ts" x="${cx - 22}" y="${cy - 12}" fill="var(--color-text-secondary)">θᵢ</text>`;
+    html += `<text class="ts" x="${cx + 12}" y="${cy - 12}" fill="var(--color-text-secondary)">θᵣ</text>`;
+    if (!tir) html += `<text class="ts" x="${cx + 12}" y="${cy + 22}" fill="var(--color-text-secondary)">θₜ</text>`;
+
+    // E-field markers
+    if (mode === 'waves' || mode === 'bc_E') {
+      html += efield((ix1 + cx) / 2, (iy1 + cy) / 2 - 14, '#185FA5', 1);
+      html += efield((cx + rx2) / 2, (cy + ry2) / 2 - 14, '#A32D2D', 1);
+      if (!tir) html += efield((cx + tx2) / 2 + 14, (cy + ty2) / 2, '#3B6D11', 1);
+    }
+
+    if (mode === 'bc_E') {
+      // highlight interface point with continuity callout
+      html += `<circle cx="${cx}" cy="${cy}" r="5" fill="#0F6E56"/>`;
+      html += `<text class="ts" x="${cx + 12}" y="${cy + 56}" fill="#0F6E56">E_i + E_r = E_t  (tangential E continuous)</text>`;
+    }
+    if (mode === 'bc_H') {
+      html += `<circle cx="${cx}" cy="${cy}" r="5" fill="#534AB7"/>`;
+      html += `<text class="ts" x="${cx + 12}" y="${cy + 56}" fill="#534AB7">tangential H continuous → cos θ projection</text>`;
+      // show H arrows perpendicular to k in the plane
+      const drawH = (x1, y1, x2, y2, color) => {
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        const px = -dy / len * 14, py = dx / len * 14;
+        return `<line x1="${mx}" y1="${my}" x2="${mx + px}" y2="${my + py}" stroke="${color}" stroke-width="1.2" marker-end="url(#arr)" opacity="0.8"/>
+                <text class="ts" x="${mx + px + 4}" y="${my + py}" fill="${color}" opacity="0.9">H</text>`;
+      };
+      html += drawH(ix1, iy1, cx, cy, '#185FA5');
+      html += drawH(cx, cy, rx2, ry2, '#A32D2D');
+      if (!tir) html += drawH(cx, cy, tx2, ty2, '#3B6D11');
+    }
+    if (mode === 'algebra' || mode === 'result') {
+      // compute r_s and t_s, show as readout box
+      let rs, ts;
+      if (tir) {
+        rs = -1; ts = 0; // magnitude only for display purposes
+      } else {
+        const n1 = 1, n2 = ratio;
+        const ci = Math.cos(thetaR), ct = Math.cos(thetaT);
+        rs = (n1 * ci - n2 * ct) / (n1 * ci + n2 * ct);
+        ts = (2 * n1 * ci) / (n1 * ci + n2 * ct);
+      }
+      const fmt = (v) => (v >= 0 ? ' ' : '') + v.toFixed(3);
+      html += `<rect x="430" y="200" width="200" height="90" rx="8" fill="var(--color-background-primary)" stroke="var(--color-border-tertiary)" stroke-width="0.5"/>`;
+      html += `<text class="ts" x="448" y="222" fill="var(--color-text-secondary)">at θᵢ = ${theta}°, n₂/n₁ = ${ratio.toFixed(2)}</text>`;
+      html += `<text class="th" x="448" y="248" fill="#A32D2D">r_s = ${tir ? '−1.000 (TIR)' : fmt(rs)}</text>`;
+      html += `<text class="th" x="448" y="270" fill="#3B6D11">t_s = ${tir ? ' 0.000 (TIR)' : fmt(ts)}</text>`;
+    }
+  }
+
+  svg.innerHTML = html;
+}
+
+$('theta').addEventListener('input', (e) => {
+  $('theta-val').textContent = e.target.value + '°';
+  drawDiagram(steps[current].draw);
+});
+$('ratio').addEventListener('input', (e) => {
+  $('ratio-val').textContent = parseFloat(e.target.value).toFixed(2);
+  drawDiagram(steps[current].draw);
+});
+
+render();
+</script>

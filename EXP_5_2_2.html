@@ -1,0 +1,211 @@
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.lbl{font-size:13px;color:var(--color-text-secondary);width:160px;flex-shrink:0}
+.val{font-size:13px;font-weight:500;color:var(--color-text-primary);width:58px;text-align:right;flex-shrink:0}
+.nval{font-size:12px;color:var(--color-text-tertiary);width:64px;text-align:right;flex-shrink:0}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.card{background:var(--color-background-secondary);border-radius:8px;padding:9px 12px}
+.clbl{font-size:11px;color:var(--color-text-secondary);margin-bottom:3px}
+.cval{font-size:18px;font-weight:500;color:var(--color-text-primary)}
+.cval.neg{color:#A32D2D}.cval.pos{color:#0F6E56}.cval.zer{color:#854F0B}
+.badge{font-size:11px;font-weight:500;padding:2px 8px;border-radius:12px;display:inline-block;margin-top:4px}
+.badge.neg{background:#FCEBEB;color:#791F1F}
+.badge.pos{background:#E1F5EE;color:#085041}
+.badge.zer{background:#FAEEDA;color:#633806}
+.fbox{background:var(--color-background-secondary);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--color-text-secondary);margin-bottom:12px;line-height:1.8}
+hr{border:none;border-top:0.5px solid var(--color-border-tertiary);margin:10px 0}
+</style>
+
+<div class="fbox">
+  n = η₀/η &nbsp;(μᵣ=1, η₀=377 Ω) &nbsp;
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <strong>rₚ = (n₂ cosθᵢ − n₁ cosθₜ) / (n₂ cosθᵢ + n₁ cosθₜ)</strong>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  Snell: n₁ sinθᵢ = n₂ sinθₜ &nbsp;|&nbsp; Brewster: tanθ_B = n₂/n₁
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-bottom:4px">
+  <div>
+    <div class="row">
+      <span class="lbl">η₁ medium 1 (Ω)</span>
+      <input type="range" id="eta1" min="50" max="500" step="1" value="377" style="flex:1">
+      <span class="val" id="v-eta1">377 Ω</span>
+      <span class="nval" id="v-n1">n=1.00</span>
+    </div>
+    <div class="row">
+      <span class="lbl">η₂ medium 2 (Ω)</span>
+      <input type="range" id="eta2" min="50" max="500" step="1" value="251" style="flex:1">
+      <span class="val" id="v-eta2">251 Ω</span>
+      <span class="nval" id="v-n2">n=1.50</span>
+    </div>
+    <div class="row">
+      <span class="lbl">θᵢ incidence (°)</span>
+      <input type="range" id="thi" min="1" max="89" step="1" value="70" style="flex:1">
+      <span class="val" id="v-thi">70°</span>
+      <span class="nval" id="v-tht">θₜ=—</span>
+    </div>
+  </div>
+  <div style="font-size:12px;color:var(--color-text-secondary);line-height:2;padding-top:2px">
+    <div>Vacuum/air: η=377 Ω → n=1.00</div>
+    <div>Water n=1.33: η=283 Ω</div>
+    <div>Glass n=1.5: η=251 Ω → θ_B=56.3°</div>
+    <div>Glass n=2.0: η=188 Ω → θ_B=63.4°</div>
+    <div>Silicon n=3.5: η=108 Ω → θ_B=74°</div>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><div class="clbl">rₚ</div><div class="cval" id="c-rp">—</div><div class="badge" id="c-badge">—</div></div>
+  <div class="card"><div class="clbl">tₚ</div><div class="cval" id="c-tp">—</div></div>
+  <div class="card"><div class="clbl">θᵢ</div><div class="cval" id="c-ti">—</div></div>
+  <div class="card"><div class="clbl">θₜ / θ_B</div><div class="cval" id="c-tt">—</div></div>
+</div>
+
+<hr>
+<svg id="svg" width="100%" viewBox="0 0 680 320" style="display:block;margin-top:4px"></svg>
+
+<script>
+function compute() {
+  const eta1 = +document.getElementById('eta1').value;
+  const eta2 = +document.getElementById('eta2').value;
+  const thi_deg = +document.getElementById('thi').value;
+  const n1 = 377 / eta1;
+  const n2 = 377 / eta2;
+  const thi = thi_deg * Math.PI / 180;
+
+  document.getElementById('v-eta1').textContent = eta1 + ' Ω';
+  document.getElementById('v-eta2').textContent = eta2 + ' Ω';
+  document.getElementById('v-n1').textContent = 'n=' + n1.toFixed(2);
+  document.getElementById('v-n2').textContent = 'n=' + n2.toFixed(2);
+  document.getElementById('v-thi').textContent = thi_deg + '°';
+
+  // Brewster angle
+  const tB = Math.atan(n2 / n1) * 180 / Math.PI;
+
+  const sinTht = (n1 / n2) * Math.sin(thi);
+  const tir = sinTht > 1.0;
+  const tht = tir ? null : Math.asin(sinTht);
+  const tht_deg = tht !== null ? (tht * 180 / Math.PI) : null;
+  const cI = Math.cos(thi);
+  const cT = tht !== null ? Math.cos(tht) : 0;
+
+  // THE correct formula: rp = (n2*cosθi - n1*cosθt) / (n2*cosθi + n1*cosθt)
+  const num_rp = n2 * cI - n1 * cT;
+  const den_rp = n2 * cI + n1 * cT;
+  const rp = tir ? -1.0 : num_rp / den_rp;
+  const tp = tir ? 0 : (2 * n1 * cI) / den_rp;
+
+  document.getElementById('v-tht').textContent = tht_deg !== null ? ('θₜ=' + tht_deg.toFixed(1) + '°') : 'TIR';
+  document.getElementById('c-rp').textContent = rp.toFixed(4);
+  document.getElementById('c-tp').textContent = tir ? '0' : tp.toFixed(4);
+  document.getElementById('c-ti').textContent = thi_deg + '°';
+  document.getElementById('c-tt').textContent = (tht_deg !== null ? tht_deg.toFixed(1) + '°' : 'TIR') + ' / θ_B=' + tB.toFixed(1) + '°';
+
+  const rpEl = document.getElementById('c-rp');
+  const badge = document.getElementById('c-badge');
+  const eps = 0.015;
+  if (Math.abs(rp) < eps) {
+    rpEl.className='cval zer'; badge.className='badge zer'; badge.textContent="Brewster — Eᵣ = 0";
+  } else if (rp < 0) {
+    rpEl.className='cval neg'; badge.className='badge neg'; badge.textContent="Eᵣ reverses";
+  } else {
+    rpEl.className='cval pos'; badge.className='badge pos'; badge.textContent="Eᵣ same sense as Eᵢ";
+  }
+
+  draw(thi, tht, rp, tp, tir, n1, n2, eta1, eta2, tB);
+}
+
+function draw(thi, tht, rp, tp, tir, n1, n2, eta1, eta2, tB) {
+  const svg = document.getElementById('svg');
+  const ox = 300, oy = 168, L = 128;
+  const sI = Math.sin(thi), cI = Math.cos(thi);
+  const sT = tht !== null ? Math.sin(tht) : 0;
+  const cT = tht !== null ? Math.cos(tht) : 1;
+
+  const iSx = ox - sI*L, iSy = oy - cI*L;
+  const rEx = ox + sI*L,  rEy = oy - cI*L;
+  const tEx = ox + sT*L,  tEy = oy + cT*L;
+  const iMx = ox - sI*L/2, iMy = oy - cI*L/2;
+  const rMx = ox + sI*L/2, rMy = oy - cI*L/2;
+  const tMx = ox + sT*L/2, tMy = oy + cT*L/2;
+
+  // p-pol E basis vectors (SVG y-down):
+  // Eᵢ: perp to k̂ᵢ → (cI, -sI) upper-right
+  const piX = cI, piY = -sI;
+  // Eᵣ: positive basis (cI, sI) lower-right; actual = sign(rp)*basis
+  const sgn = rp >= 0 ? 1 : -1;
+  const prX = sgn * cI, prY = sgn * sI;
+  // Eₜ: perp to k̂ₜ → (cT, -sT) upper-right
+  const ptX = cT, ptY = -sT;
+
+  const eLen = 38;
+  const erLen = eLen * Math.min(Math.abs(rp), 1.0);
+  const etLen = eLen * Math.min(Math.abs(tp) * 0.5, 1.1);
+
+  const eiTx = iMx + piX*eLen,  eiTy = iMy + piY*eLen;
+  const erTx = rMx + prX*erLen, erTy = rMy + prY*erLen;
+  const etTx = tMx + ptX*etLen, etTy = tMy + ptY*etLen;
+
+  const thi_s = (thi*180/Math.PI).toFixed(1);
+  const tht_s = tht ? (tht*180/Math.PI).toFixed(1) : null;
+  const rc='#185FA5', ec='#D85A30', dc='#888780';
+  const brewster = Math.abs(rp) < 0.015;
+
+  const labelX = rMx + 10;
+  const flipLabel = (!brewster && rp < 0)
+    ? `<rect x="${labelX}" y="${rMy+8}" width="124" height="18" rx="4" fill="#FCEBEB" opacity="0.93"/>
+       <text x="${labelX+62}" y="${rMy+21}" font-size="11" fill="#791F1F" text-anchor="middle" font-family="sans-serif">rₚ=${rp.toFixed(3)} — Eᵣ flipped</text>` : '';
+  const sameLabel = (!brewster && rp >= 0 && !tir)
+    ? `<rect x="${labelX}" y="${rMy+8}" width="124" height="18" rx="4" fill="#E1F5EE" opacity="0.93"/>
+       <text x="${labelX+62}" y="${rMy+21}" font-size="11" fill="#085041" text-anchor="middle" font-family="sans-serif">rₚ=${rp.toFixed(3)} — same sense</text>` : '';
+  const brewLabel = brewster
+    ? `<rect x="${ox-66}" y="${oy+38}" width="132" height="18" rx="4" fill="#FAEEDA" opacity="0.92"/>
+       <text x="${ox}" y="${oy+51}" font-size="11" fill="#633806" text-anchor="middle" font-family="sans-serif">Brewster angle θ_B=${tB.toFixed(1)}° — rₚ=0</text>` : '';
+
+  svg.innerHTML = `
+  <defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker></defs>
+
+  <rect x="0" y="0" width="680" height="${oy}" fill="#dbeafe" opacity="0.22"/>
+  <rect x="0" y="${oy}" width="680" height="${320-oy}" fill="#d1fae5" opacity="0.22"/>
+
+  <line x1="28" y1="${oy}" x2="648" y2="${oy}" stroke="${dc}" stroke-width="1.2" stroke-dasharray="8 5"/>
+  <text x="34" y="${oy-8}"  font-size="11" fill="${dc}" font-family="sans-serif">medium 1: η₁=${eta1} Ω, n₁=${n1.toFixed(2)}</text>
+  <text x="34" y="${oy+18}" font-size="11" fill="${dc}" font-family="sans-serif">medium 2: η₂=${eta2} Ω, n₂=${n2.toFixed(2)}</text>
+
+  <line x1="${ox}" y1="${oy-70}" x2="${ox}" y2="${oy+80}" stroke="${dc}" stroke-width="0.8" stroke-dasharray="4 3"/>
+  <text x="${ox+3}" y="${oy-60}" font-size="10" fill="${dc}" font-family="sans-serif">normal</text>
+
+  <line x1="${iSx}" y1="${iSy}" x2="${ox-4*sI}" y2="${oy-4*cI}" stroke="${rc}" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="${iSx}" y="${iSy-10}" font-size="12" fill="${rc}" font-weight="500" text-anchor="middle" font-family="sans-serif">incident  θᵢ=${thi_s}°</text>
+
+  <line x1="${ox+4*sI}" y1="${oy-4*cI}" x2="${rEx}" y2="${rEy}" stroke="${rc}" stroke-width="2.5" marker-end="url(#ah)"/>
+  <text x="${rEx+4}" y="${rEy-10}" font-size="12" fill="${rc}" font-weight="500" text-anchor="start" font-family="sans-serif">reflected  θᵣ=${thi_s}°</text>
+
+  ${!tir
+    ? `<line x1="${ox+4*sT}" y1="${oy+4*cT}" x2="${tEx}" y2="${tEy}" stroke="${rc}" stroke-width="2.5" marker-end="url(#ah)"/>
+       <text x="${tEx+4}" y="${tEy+4}" font-size="12" fill="${rc}" font-weight="500" text-anchor="start" font-family="sans-serif">transmitted  θₜ=${tht_s}°</text>`
+    : `<text x="${ox+14}" y="${oy+52}" font-size="12" fill="#A32D2D" font-weight="500" font-family="sans-serif">Total internal reflection</text>`}
+
+  <line x1="${iMx}" y1="${iMy}" x2="${eiTx}" y2="${eiTy}" stroke="${ec}" stroke-width="2.3" marker-end="url(#ah)"/>
+  <text x="${eiTx-4}" y="${eiTy-7}" font-size="13" fill="${ec}" font-weight="500" text-anchor="middle" font-family="sans-serif">Eᵢ</text>
+
+  ${brewster
+    ? `<circle cx="${rMx}" cy="${rMy}" r="7" fill="none" stroke="${ec}" stroke-width="1.8"/>
+       <line x1="${rMx-5}" y1="${rMy}" x2="${rMx+5}" y2="${rMy}" stroke="${ec}" stroke-width="1.5"/>
+       <text x="${rMx}" y="${rMy-12}" font-size="12" fill="${ec}" text-anchor="middle" font-family="sans-serif">Eᵣ=0</text>`
+    : `<line x1="${rMx}" y1="${rMy}" x2="${erTx}" y2="${erTy}" stroke="${ec}" stroke-width="2.3" marker-end="url(#ah)"/>
+       <text x="${erTx+(rp>=0?4:-14)}" y="${erTy+(rp>=0?-6:12)}" font-size="13" fill="${ec}" font-weight="500" font-family="sans-serif">Eᵣ</text>`}
+
+  ${!tir && !brewster
+    ? `<line x1="${tMx}" y1="${tMy}" x2="${etTx}" y2="${etTy}" stroke="${ec}" stroke-width="2.3" marker-end="url(#ah)"/>
+       <text x="${etTx+4}" y="${etTy-6}" font-size="13" fill="${ec}" font-weight="500" font-family="sans-serif">Eₜ</text>` : ''}
+
+  ${flipLabel}${sameLabel}${brewLabel}`;
+}
+
+['eta1','eta2','thi'].forEach(id => document.getElementById(id).addEventListener('input', compute));
+compute();
+</script>

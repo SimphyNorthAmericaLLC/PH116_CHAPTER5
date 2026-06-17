@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Refraction Widget</title>
+<style>
+body {
+    background: #111;
+    color: white;
+    font-family: Arial, sans-serif;
+    text-align: center;
+}
+canvas {
+    background: #000;
+    margin-top: 10px;
+    border: 1px solid #444;
+}
+.controls {
+    margin-top: 10px;
+    line-height: 1.8;
+}
+input {
+    width: 220px;
+}
+</style>
+</head>
+<body>
+
+<h2>Refraction and Snell's Law</h2>
+
+<canvas id="canvas" width="850" height="520"></canvas>
+
+<div class="controls">
+    n₁: <input type="range" id="n1" min="1.0" max="3.0" step="0.01" value="1.0">
+    <span id="n1val">1.00</span>
+    <br>
+    n₂: <input type="range" id="n2" min="1.0" max="3.0" step="0.01" value="1.5">
+    <span id="n2val">1.50</span>
+    <br>
+    θᵢ: <input type="range" id="theta1" min="5" max="80" step="1" value="30">
+    <span id="theta1val">30°</span>
+</div>
+
+<script>
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let n1 = 1.0;
+let n2 = 1.5;
+let freq = 1;
+let theta1 = 30 * Math.PI / 180;
+
+const cx = 425;
+const cy = 260;
+const rayLength = 210;
+
+document.getElementById("n1").oninput = function() {
+    n1 = parseFloat(this.value);
+    document.getElementById("n1val").innerText = n1.toFixed(2);
+};
+
+document.getElementById("n2").oninput = function() {
+    n2 = parseFloat(this.value);
+    document.getElementById("n2val").innerText = n2.toFixed(2);
+};
+
+document.getElementById("theta1").oninput = function() {
+    theta1 = parseFloat(this.value) * Math.PI / 180;
+    document.getElementById("theta1val").innerText = this.value + "°";
+};
+
+function drawLine(x1, y1, x2, y2, color, width = 2, alpha = 1, dashed = false) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    if (dashed) ctx.setLineDash([7, 7]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawArrow(x1, y1, x2, y2, color, width = 3, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = width;
+
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    const a = Math.atan2(y2 - y1, x2 - x1);
+    const h = 10;
+
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - h * Math.cos(a - Math.PI / 6), y2 - h * Math.sin(a - Math.PI / 6));
+    ctx.lineTo(x2 - h * Math.cos(a + Math.PI / 6), y2 - h * Math.sin(a + Math.PI / 6));
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function drawWavefrontsFromRay(dx, dy, speed, color, yLimitTop) {
+    const lambda = speed / freq;
+    const spacing = lambda * 55;
+
+    const wx = -dy;
+    const wy = dx;
+    const nx = dx;
+    const ny = dy;
+
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.75;
+
+    for (let i = -16; i <= 16; i++) {
+        const ox = cx + i * spacing * nx;
+        const oy = cy + i * spacing * ny;
+
+        ctx.beginPath();
+
+        for (let s = -900; s <= 900; s += 20) {
+            const x = ox + s * wx;
+            const y = oy + s * wy;
+
+            if (yLimitTop && y <= cy) {
+                if (s === -900) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+
+            if (!yLimitTop && y >= cy) {
+                if (s === -900) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+        }
+
+        ctx.stroke();
+    }
+
+    ctx.restore();
+}
+
+function drawAngleArc(theta, label, color, below = false) {
+    const r = 45;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.font = "15px Arial";
+
+    ctx.beginPath();
+
+    if (!below) {
+        ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 - theta, true);
+        ctx.stroke();
+        ctx.fillText(label, cx - 32, cy - 58);
+    } else {
+        ctx.arc(cx, cy, r, Math.PI / 2, Math.PI / 2 - theta, true);
+        ctx.stroke();
+        ctx.fillText(label, cx + 22, cy + 66);
+    }
+
+    ctx.restore();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Boundary
+    drawLine(0, cy, canvas.width, cy, "white", 2);
+
+    // Normal
+    drawLine(cx, 0, cx, canvas.height, "#666", 1, 0.8, true);
+
+    // Snell's law: n1 sin(theta1) = n2 sin(theta2)
+    const snellArg = (n1 / n2) * Math.sin(theta1);
+
+    let theta2;
+    let totalInternal = false;
+
+    if (Math.abs(snellArg) <= 1) {
+        theta2 = Math.asin(snellArg);
+    } else {
+        theta2 = Math.PI / 2;
+        totalInternal = true;
+    }
+
+    const thetaR = theta1;
+
+    // speeds = 1/n (normalised)
+    const v1 = 1.0 / n1;
+    const v2 = 1.0 / n2;
+
+    // Ray unit vectors
+    const incidentDx  =  Math.sin(theta1);
+    const incidentDy  =  Math.cos(theta1);
+    const reflectedDx =  Math.sin(thetaR);
+    const reflectedDy = -Math.cos(thetaR);
+    const transmittedDx = Math.sin(theta2);
+    const transmittedDy = Math.cos(theta2);
+
+    // Wavefronts
+    drawWavefrontsFromRay(incidentDx, incidentDy, v1, "cyan", true);
+    if (!totalInternal) {
+        drawWavefrontsFromRay(transmittedDx, transmittedDy, v2, "orange", false);
+    }
+
+    // Ray endpoints
+    const ix1 = cx - rayLength * incidentDx;
+    const iy1 = cy - rayLength * incidentDy;
+    const rx2  = cx + rayLength * reflectedDx;
+    const ry2  = cy + rayLength * reflectedDy;
+    const tx2  = cx + rayLength * transmittedDx;
+    const ty2  = cy + rayLength * transmittedDy;
+
+    // Rays
+    drawArrow(ix1, iy1, cx, cy, "white", 2);
+    drawArrow(cx, cy, rx2, ry2, "red", 2, 1);
+    if (!totalInternal) {
+        drawArrow(cx, cy, tx2, ty2, "white", 2);
+    }
+
+    // Labels
+    ctx.font = "15px Arial";
+    ctx.fillStyle = "white";
+    ctx.fillText("Medium 1  (n₁ = " + n1.toFixed(2) + ")", 15, 30);
+    ctx.fillText("Medium 2  (n₂ = " + n2.toFixed(2) + ")", 15, canvas.height - 25);
+
+    ctx.fillStyle = "white";
+    ctx.fillText("θᵢ = " + (theta1 * 180 / Math.PI).toFixed(1) + "°", 620, 35);
+    ctx.fillText("θᵣ = " + (thetaR * 180 / Math.PI).toFixed(1) + "°", 620, 58);
+    if (!totalInternal) {
+        ctx.fillText("θₜ = " + (theta2 * 180 / Math.PI).toFixed(1) + "°", 620, 81);
+    }
+
+    if (totalInternal) {
+        ctx.fillStyle = "red";
+        ctx.fillText("Total internal reflection: no transmitted ray", 430, 90);
+    }
+
+    drawAngleArc(theta1, "θᵢ", "cyan", false);
+    if (!totalInternal) {
+        drawAngleArc(theta2, "θₜ", "orange", true);
+    }
+}
+
+function loop() {
+    draw();
+    requestAnimationFrame(loop);
+}
+
+loop();
+</script>
+
+</body>
+</html>

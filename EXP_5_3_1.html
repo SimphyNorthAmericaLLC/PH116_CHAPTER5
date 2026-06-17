@@ -1,0 +1,446 @@
+<h2 class="sr-only">Interactive demonstration of Malus's law with up to three polarizers. Set each polarizer angle. The plot sweeps one chosen angle and shows the final transmitted intensity.</h2>
+
+<style>
+.row{display:flex;align-items:center;gap:10px;margin:6px 0;font-size:13px}
+.row label{flex:0 0 160px;color:var(--color-text-secondary)}
+.row input[type=range]{flex:1}
+.row .val{flex:0 0 80px;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.panel{background:var(--color-background-secondary);border-radius:var(--border-radius-lg);padding:12px 14px;margin-bottom:10px}
+.panel h3{font-size:14px;font-weight:500;margin:0 0 8px;color:var(--color-text-primary)}
+.btn-row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
+.btn-row button{flex:1;min-width:90px}
+.bench-wrap{display:grid;grid-template-columns:1fr 180px;gap:12px;align-items:stretch}
+@media (max-width:620px){.bench-wrap{grid-template-columns:1fr}}
+.final-card{background:linear-gradient(135deg, rgba(24,95,165,0.10), rgba(15,110,86,0.10));border:1px solid var(--color-border-info);border-radius:var(--border-radius-lg);padding:14px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.final-card .lbl{font-size:12px;color:var(--color-text-secondary);margin-bottom:6px}
+.final-card .big{font-size:30px;font-weight:600;font-variant-numeric:tabular-nums;color:#185FA5;line-height:1}
+.final-card .sub{font-size:12px;color:var(--color-text-secondary);margin-top:8px;font-variant-numeric:tabular-nums}
+.final-card .trans{font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;margin-top:4px;color:var(--color-text-primary)}
+.stat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.stat{background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:var(--border-radius-md);padding:7px 10px}
+.stat .lbl{font-size:11px;color:var(--color-text-secondary)}
+.stat .v{font-size:14px;font-weight:500;font-variant-numeric:tabular-nums}
+.plot-pick{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center}
+.plot-pick label{font-size:12px;color:var(--color-text-secondary);margin-right:4px}
+.plot-pick button{padding:4px 10px;font-size:12px}
+.plot-pick button.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.hover-readout{display:flex;gap:14px;font-size:12px;color:var(--color-text-secondary);margin-top:6px;font-variant-numeric:tabular-nums;min-height:18px}
+.hover-readout b{color:var(--color-text-primary);font-weight:500;margin-left:4px}
+.input-toggle{display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.input-toggle button{padding:5px 12px;font-size:12px}
+.input-toggle button.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.npol-toggle{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+.npol-toggle button{padding:5px 12px;font-size:12px}
+.npol-toggle button.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+.pol-disabled{opacity:0.35;pointer-events:none}
+</style>
+
+<div class="panel">
+  <h3>Source</h3>
+  <div class="input-toggle">
+    <span style="font-size:12px;color:var(--color-text-secondary);margin-right:6px">Input light:</span>
+    <button id="srcU" class="active">Unpolarized</button>
+    <button id="srcP">Linearly polarized</button>
+  </div>
+  <div class="row" id="srcAngleRow" style="display:none">
+    <label>Input polarization angle</label>
+    <input type="range" id="srcAng" min="0" max="180" step="1" value="0">
+    <span class="val" id="srcAngV">0°</span>
+  </div>
+  <div class="row">
+    <label>Input intensity I₀</label>
+    <input type="range" id="I0" min="0" max="2" step="0.01" value="1.0">
+    <span class="val" id="I0v">1.00</span>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Polarizers</h3>
+  <div class="npol-toggle">
+    <span style="font-size:12px;color:var(--color-text-secondary);margin-right:6px">Number:</span>
+    <button data-n="1">1</button>
+    <button data-n="2" class="active">2</button>
+    <button data-n="3">3</button>
+  </div>
+  <div class="row" id="p1row">
+    <label>Polarizer 1 angle θ₁</label>
+    <input type="range" id="p1" min="0" max="180" step="1" value="0">
+    <span class="val" id="p1v">0°</span>
+  </div>
+  <div class="row" id="p2row">
+    <label>Polarizer 2 angle θ₂</label>
+    <input type="range" id="p2" min="0" max="180" step="1" value="45">
+    <span class="val" id="p2v">45°</span>
+  </div>
+  <div class="row" id="p3row">
+    <label>Polarizer 3 angle θ₃</label>
+    <input type="range" id="p3" min="0" max="180" step="1" value="90">
+    <span class="val" id="p3v">90°</span>
+  </div>
+  <div class="btn-row">
+    <button id="preset1">Crossed (0°, 90°)</button>
+    <button id="preset2">Middle 45° trick</button>
+    <button id="preset3">Aligned</button>
+  </div>
+</div>
+
+<div class="panel" style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary)">
+  <h3>Optical bench</h3>
+  <div class="bench-wrap">
+    <div>
+      <canvas id="bench" width="660" height="200" role="img" aria-label="Diagram of polarizers with transmission axes and a light beam passing through them."></canvas>
+    </div>
+    <div class="final-card">
+      <div class="lbl">Final transmitted intensity</div>
+      <div class="big" id="Ifinal">—</div>
+      <div class="sub">I₀ = <span id="I0disp">—</span></div>
+      <div class="trans" id="Tr">—</div>
+    </div>
+  </div>
+  <div class="stat-grid">
+    <div class="stat"><div class="lbl">After P₁</div><div class="v" id="I1">—</div></div>
+    <div class="stat"><div class="lbl">After P₂</div><div class="v" id="I2">—</div></div>
+    <div class="stat"><div class="lbl">After P₃</div><div class="v" id="I3">—</div></div>
+  </div>
+  <div style="font-size:12px;color:var(--color-text-secondary);margin-top:6px">
+    Malus's law: between two polarizers, I<sub>out</sub> = I<sub>in</sub>·cos²(Δθ). An unpolarized beam through one polarizer becomes ½·I₀ regardless of axis.
+  </div>
+</div>
+
+<div class="panel" style="background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary)">
+  <h3>Final intensity vs swept angle</h3>
+  <div class="plot-pick" id="sweepPick">
+    <label>Sweep which polarizer:</label>
+    <button data-s="1">θ₁</button>
+    <button data-s="2" class="active">θ₂</button>
+    <button data-s="3">θ₃</button>
+  </div>
+  <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px" id="sweepDesc">
+    Sweeping θ₂ from 0° to 180°; other angles fixed at their slider values.
+  </div>
+  <div style="position:relative;width:100%;height:260px;margin-top:6px">
+    <canvas id="chart" role="img" aria-label="Plot of final transmitted intensity as a function of the swept polarizer angle."></canvas>
+  </div>
+  <div class="hover-readout">
+    <span>angle:<b id="hov-x">—</b></span>
+    <span>I<sub>final</sub>:<b id="hov-y">—</b></span>
+    <span style="color:var(--color-text-tertiary);margin-left:auto">hover for exact values</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  let nPol = 2;
+  let srcType = 'U';
+  let srcAng = 0;
+  let I0 = 1.0;
+  let th = [0, 45, 90];
+  let sweepIdx = 2;
+
+  function compute(angles){
+    let I = I0;
+    let polAng = (srcType === 'P') ? srcAng : null;
+    const result = [];
+    for (let i = 0; i < nPol; i++){
+      const ax = angles[i];
+      if (polAng === null){
+        I = I * 0.5;
+      } else {
+        const d = (ax - polAng) * Math.PI/180;
+        I = I * Math.cos(d)*Math.cos(d);
+      }
+      polAng = ax;
+      result.push(I);
+    }
+    return result;
+  }
+
+  function readUI(){
+    srcAng = +$('srcAng').value;
+    I0 = +$('I0').value;
+    th[0] = +$('p1').value;
+    th[1] = +$('p2').value;
+    th[2] = +$('p3').value;
+    $('srcAngV').textContent = srcAng + '°';
+    $('I0v').textContent = I0.toFixed(2);
+    $('p1v').textContent = th[0] + '°';
+    $('p2v').textContent = th[1] + '°';
+    $('p3v').textContent = th[2] + '°';
+  }
+
+  const cv = $('bench'), ctx = cv.getContext('2d');
+  function drawBench(){
+    const W = cv.width, H = cv.height;
+    ctx.clearRect(0,0,W,H);
+    const cy = H/2;
+    const margin = 30;
+    const xs = [];
+    for (let i=0;i<nPol;i++){
+      xs.push(margin + 80 + (W - margin*2 - 160) * (nPol===1 ? 0.5 : i/(nPol-1)));
+    }
+    const Is = compute(th);
+    const stages = [I0, ...Is];
+    let polAng = (srcType==='P') ? srcAng : null;
+
+    function beam(x1, x2, y, intensity, polAxis){
+      const op = Math.min(1, Math.max(0.05, intensity / Math.max(I0, 1e-6)));
+      ctx.strokeStyle = `rgba(218, 178, 41, ${0.25 + op*0.55})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(x1, y); ctx.lineTo(x2, y); ctx.stroke();
+      if (polAxis === null){
+        ctx.strokeStyle = 'rgba(120,90,20,0.5)';
+        ctx.lineWidth = 1;
+        for (let x = x1+12; x < x2-6; x += 18){
+          ctx.beginPath(); ctx.moveTo(x-3, y-3); ctx.lineTo(x+3, y+3); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x-3, y+3); ctx.lineTo(x+3, y-3); ctx.stroke();
+        }
+      } else {
+        ctx.strokeStyle = 'rgba(120,90,20,0.85)';
+        ctx.lineWidth = 1.2;
+        const a = polAxis * Math.PI/180;
+        const len = 7;
+        for (let x = x1+12; x < x2-6; x += 16){
+          ctx.beginPath();
+          ctx.moveTo(x - len*Math.cos(a), y + len*Math.sin(a));
+          ctx.lineTo(x + len*Math.cos(a), y - len*Math.sin(a));
+          ctx.stroke();
+        }
+      }
+    }
+
+    beam(margin, xs[0]-22, cy, I0, polAng);
+    for (let i=0;i<nPol;i++){
+      const xstart = xs[i]+22;
+      const xend = (i<nPol-1) ? xs[i+1]-22 : W - margin;
+      beam(xstart, xend, cy, stages[i+1], th[i]);
+    }
+
+    for (let i=0;i<nPol;i++){
+      const x = xs[i];
+      ctx.fillStyle = 'rgba(40,55,90,0.85)';
+      ctx.strokeStyle = '#1b2a4a';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(x, cy, 14, 40, 0, 0, Math.PI*2);
+      ctx.fill(); ctx.stroke();
+      const a = th[i] * Math.PI/180;
+      ctx.strokeStyle = '#FFD24A';
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = 'round';
+      const len = 32;
+      ctx.beginPath();
+      ctx.moveTo(x - len*Math.sin(a), cy - len*Math.cos(a));
+      ctx.lineTo(x + len*Math.sin(a), cy + len*Math.cos(a));
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+      ctx.fillStyle = getCSS('--color-text-primary') || '#222';
+      ctx.font = '12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('P'+(i+1), x, cy + 58);
+      ctx.fillText('θ='+th[i]+'°', x, cy + 73);
+    }
+
+    ctx.fillStyle = getCSS('--color-text-secondary') || '#666';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(srcType==='U' ? 'Unpolarized source' : `Polarized @ ${srcAng}°`, margin, cy - 50);
+    ctx.textAlign = 'center';
+    const segs = [];
+    segs.push({x:(margin+xs[0]-22)/2, I:I0});
+    for (let i=0;i<nPol;i++){
+      const x1 = xs[i]+22;
+      const x2 = (i<nPol-1) ? xs[i+1]-22 : W - margin;
+      segs.push({x:(x1+x2)/2, I:stages[i+1]});
+    }
+    ctx.fillStyle = getCSS('--color-text-secondary') || '#666';
+    ctx.font = '11px sans-serif';
+    segs.forEach((s)=>{
+      ctx.fillText('I = '+s.I.toFixed(3), s.x, cy - 22);
+    });
+  }
+  function getCSS(name){ return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+  function updateStats(){
+    const Is = compute(th);
+    for (let i=0;i<3;i++){
+      const el = $('I'+(i+1));
+      if (i<nPol) el.textContent = Is[i].toFixed(3);
+      else el.textContent = '—';
+    }
+    const finalI = Is[nPol-1];
+    $('Ifinal').textContent = finalI.toFixed(3);
+    $('I0disp').textContent = I0.toFixed(2);
+    $('Tr').textContent = I0>0 ? (finalI/I0*100).toFixed(1)+'% of I₀' : '—';
+  }
+
+  let chart;
+  function initChart(){
+    const c = $('chart').getContext('2d');
+    chart = new Chart(c, {
+      type:'line',
+      data:{datasets:[{
+        label:'final intensity',
+        data:[],
+        borderColor:'#185FA5',
+        backgroundColor:'rgba(24,95,165,0.12)',
+        borderWidth:2,
+        pointRadius:0,
+        pointHoverRadius:5,
+        pointHoverBackgroundColor:'#185FA5',
+        pointHoverBorderColor:'#fff', pointHoverBorderWidth:2,
+        tension:0.05, fill:true
+      }]},
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        interaction:{mode:'index', intersect:false, axis:'x'},
+        hover:{mode:'index', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            enabled:true, mode:'index', intersect:false,
+            backgroundColor:'rgba(20,20,20,0.92)',
+            titleColor:'#fff', bodyColor:'#fff',
+            borderColor:'rgba(255,255,255,0.15)', borderWidth:1, padding:8, displayColors:false,
+            callbacks:{
+              title:(items)=> items.length ? 'θ'+sub(sweepIdx)+' = '+(+items[0].parsed.x).toFixed(1)+'°' : '',
+              label:(item)=> 'I_final = '+(+item.parsed.y).toFixed(4)
+            }
+          }
+        },
+        scales:{
+          x:{type:'linear', title:{display:true,text:'θ_sweep (°)'}, ticks:{stepSize:30, callback:v=>(+v).toFixed(0)}, min:0, max:180},
+          y:{title:{display:true,text:'final intensity'}, ticks:{callback:v=>(+v).toFixed(2)}, min:0}
+        },
+        onHover:(evt, elements)=>{
+          if (elements && elements.length){
+            const idx = elements[0].index;
+            const d = chart.data.datasets[0].data[idx];
+            $('hov-x').textContent = ' '+d.x.toFixed(1)+'°';
+            $('hov-y').textContent = ' '+d.y.toFixed(4);
+          }
+        }
+      }
+    });
+    $('chart').addEventListener('mouseleave',()=>{
+      $('hov-x').textContent='—'; $('hov-y').textContent='—';
+    });
+  }
+  function sub(n){ return ['₁','₂','₃'][n-1]; }
+
+  function updateChart(){
+    if(!chart) return;
+    const N = 181;
+    const data = [];
+    const savedTh = [...th];
+    for (let k=0;k<N;k++){
+      const angs = [...savedTh];
+      angs[sweepIdx-1] = k;
+      const Is = compute(angs);
+      data.push({x:k, y:Is[nPol-1]});
+    }
+    chart.data.datasets[0].data = data;
+    chart.options.scales.x.title.text = 'θ'+sub(sweepIdx)+' (°)';
+    chart.options.scales.y.max = Math.max(0.05, I0 * 1.05);
+    chart.update('none');
+
+    const others = [];
+    for (let i=0;i<nPol;i++){
+      if (i+1 !== sweepIdx) others.push('θ'+sub(i+1)+' = '+th[i]+'°');
+    }
+    $('sweepDesc').textContent =
+      'Sweeping θ'+sub(sweepIdx)+' from 0° to 180°' +
+      (others.length ? '; held fixed: '+others.join(', ') : '') + '.';
+  }
+
+  function refresh(){
+    drawBench();
+    updateStats();
+    updateChart();
+  }
+
+  ['srcAng','I0','p1','p2','p3'].forEach(id=>{
+    $(id).addEventListener('input', ()=>{ readUI(); refresh(); });
+  });
+
+  $('srcU').addEventListener('click',()=>{
+    srcType='U';
+    $('srcU').classList.add('active'); $('srcP').classList.remove('active');
+    $('srcAngleRow').style.display='none';
+    refresh();
+  });
+  $('srcP').addEventListener('click',()=>{
+    srcType='P';
+    $('srcP').classList.add('active'); $('srcU').classList.remove('active');
+    $('srcAngleRow').style.display='flex';
+    refresh();
+  });
+
+  document.querySelectorAll('.npol-toggle button').forEach(b=>{
+    b.addEventListener('click',()=>{
+      document.querySelectorAll('.npol-toggle button').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      nPol = +b.dataset.n;
+      $('p2row').classList.toggle('pol-disabled', nPol<2);
+      $('p3row').classList.toggle('pol-disabled', nPol<3);
+      if (sweepIdx > nPol){
+        sweepIdx = nPol;
+        document.querySelectorAll('#sweepPick button[data-s]').forEach(x=>x.classList.remove('active'));
+        const m = document.querySelector(`#sweepPick button[data-s="${sweepIdx}"]`);
+        if (m) m.classList.add('active');
+      }
+      document.querySelectorAll('#sweepPick button[data-s]').forEach(x=>{
+        x.disabled = (+x.dataset.s > nPol);
+        x.style.opacity = x.disabled ? 0.35 : 1;
+      });
+      refresh();
+    });
+  });
+
+  document.querySelectorAll('#sweepPick button[data-s]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      if (b.disabled) return;
+      document.querySelectorAll('#sweepPick button[data-s]').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      sweepIdx = +b.dataset.s;
+      updateChart();
+    });
+  });
+
+  $('preset1').addEventListener('click',()=>{
+    setN(2);
+    $('p1').value=0; $('p2').value=90;
+    readUI(); refresh();
+  });
+  $('preset2').addEventListener('click',()=>{
+    setN(3);
+    $('p1').value=0; $('p2').value=45; $('p3').value=90;
+    readUI(); refresh();
+  });
+  $('preset3').addEventListener('click',()=>{
+    setN(2);
+    $('p1').value=0; $('p2').value=0;
+    readUI(); refresh();
+  });
+  function setN(n){
+    document.querySelectorAll('.npol-toggle button').forEach(x=>x.classList.remove('active'));
+    const btn = document.querySelector(`.npol-toggle button[data-n="${n}"]`);
+    btn.classList.add('active');
+    nPol = n;
+    $('p2row').classList.toggle('pol-disabled', nPol<2);
+    $('p3row').classList.toggle('pol-disabled', nPol<3);
+    document.querySelectorAll('#sweepPick button[data-s]').forEach(x=>{
+      x.disabled = (+x.dataset.s > nPol);
+      x.style.opacity = x.disabled ? 0.35 : 1;
+    });
+    if (sweepIdx > nPol) sweepIdx = nPol;
+    document.querySelectorAll('#sweepPick button[data-s]').forEach(x=>x.classList.toggle('active', +x.dataset.s === sweepIdx));
+  }
+
+  readUI();
+  initChart();
+  setN(2);
+  refresh();
+})();
+</script>

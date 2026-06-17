@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Prism_Index_Solver.html</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body {
+  background-color:#1e1e1e;
+  color:white;
+  font-family: monospace;
+  padding:15px;
+}
+.editor {
+  display:flex;
+  border:1px solid #444;
+  height:340px;
+}
+#lineNumbers {
+  background:#111;
+  color:#00ff00;
+  padding:10px 8px;
+  margin:0;
+  text-align:right;
+  overflow:hidden;
+  white-space:pre;
+}
+#code {
+  flex:1;
+  background:#111;
+  color:white;
+  border:none;
+  padding:10px;
+  resize:none;
+  overflow:auto;
+  white-space:pre;
+}
+button {
+  margin-top:10px;
+  margin-right:6px;
+  padding:8px 14px;
+  background:#007acc;
+  color:white;
+  border:none;
+  cursor:pointer;
+}
+#output {
+  background:#111;
+  padding:10px;
+  margin-top:10px;
+  min-height:120px;
+  white-space:pre-wrap;
+}
+#plot {
+  margin-top:15px;
+  background:white;
+  padding:10px;
+  border-radius:8px;
+}
+#plotButtons {
+  margin-top:10px;
+  display:none;
+}
+</style>
+</head>
+
+<body>
+<h3>Prism_Index_Solver.html</h3>
+
+<div class="editor">
+  <pre id="lineNumbers"></pre>
+  <textarea id="code" wrap="off">import math
+
+# Prism Index Solver
+# Edit the values below
+
+A_deg = 60.0
+i_deg = 30.0
+theta_e_deg = 76.9
+
+A = math.radians(A_deg)
+i = math.radians(i_deg)
+theta_e = math.radians(theta_e_deg)
+
+def f(n):
+    return math.sin(theta_e) - n*math.sin(
+        A - math.asin(math.sin(i)/n)
+    )
+
+n_low = 1.0001
+n_high = 5.0
+
+if f(n_low)*f(n_high) > 0:
+    print("No physical solution found.")
+else:
+    for k in range(100):
+        n_mid = 0.5*(n_low+n_high)
+
+        if f(n_low)*f(n_mid) <= 0:
+            n_high = n_mid
+        else:
+            n_low = n_mid
+
+    n = 0.5*(n_low+n_high)
+
+    theta_r = math.degrees(math.asin(math.sin(i)/n))
+    theta_2 = A_deg - theta_r
+
+    print("Prism apex angle A =", A_deg, "deg")
+    print("Incident angle i =", i_deg, "deg")
+    print("Exit angle theta_e =", theta_e_deg, "deg")
+    print()
+    print("theta_r =", round(theta_r,6), "deg")
+    print("theta_2 =", round(theta_2,6), "deg")
+    print()
+    print("Refractive index n =", round(n,8))
+</textarea>
+</div>
+
+<div>
+  <button onclick="runCode()">Run</button>
+</div>
+
+<div id="plotButtons">
+  <button onclick="downloadPlot('png')">Save PNG</button>
+  <button onclick="downloadPlot('pdf')">Save PDF</button>
+  <button onclick="downloadPlot('svg')">Save SVG</button>
+</div>
+
+<div id="output"></div>
+<div id="plot"></div>
+
+<script>
+let pyodideReady = loadPyodide();
+let pyodide = null;
+
+const codeEl = document.getElementById("code");
+const lineNumbers = document.getElementById("lineNumbers");
+const plotDiv = document.getElementById("plot");
+const outDiv = document.getElementById("output");
+const plotButtons = document.getElementById("plotButtons");
+
+function updateLineNumbers() {
+  const lines = codeEl.value.split("\n").length;
+  let nums = "";
+  for (let i=1;i<=lines;i++) nums += i + "\n";
+  lineNumbers.textContent = nums;
+}
+codeEl.addEventListener("input", updateLineNumbers);
+codeEl.addEventListener("scroll", () => lineNumbers.scrollTop = codeEl.scrollTop);
+updateLineNumbers();
+
+async function runCode() {
+  pyodide = await pyodideReady;
+  outDiv.innerText = "Running...";
+  plotDiv.innerHTML = "";
+  plotButtons.style.display = "none";
+
+  await pyodide.loadPackage(["numpy","matplotlib","scipy"]);
+
+  try {
+    await pyodide.runPythonAsync(`
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+plt.rcParams.update({
+  'figure.facecolor': 'white',
+  'axes.facecolor': 'white',
+})
+
+import sys, io, base64
+from io import StringIO
+sys.stdout = StringIO()
+`);
+
+    await pyodide.runPythonAsync(codeEl.value);
+
+    await pyodide.runPythonAsync(`
+plt.tight_layout()
+plt.savefig("plot.png")
+plt.savefig("plot.pdf")
+plt.savefig("plot.svg")
+
+buf = io.BytesIO()
+plt.savefig(buf, format="png")
+buf.seek(0)
+img_base64 = base64.b64encode(buf.read()).decode("utf-8")
+print("__PLOT__" + img_base64)
+`);
+
+    let out = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+
+    if (out.includes("__PLOT__")) {
+      const parts = out.split("__PLOT__");
+      outDiv.innerText = parts[0];
+      const img = document.createElement("img");
+      img.src = "data:image/png;base64," + parts[1];
+      img.style.maxWidth = "100%";
+      plotDiv.appendChild(img);
+      plotButtons.style.display = "block";
+    } else {
+      outDiv.innerText = out;
+    }
+
+  } catch (err) {
+    outDiv.innerText = err;
+  }
+}
+
+function downloadPlot(ext) {
+  try {
+    const data = pyodide.FS.readFile("plot." + ext, {encoding:"binary"});
+    let mime = "application/octet-stream";
+    if (ext === "png") mime = "image/png";
+    if (ext === "pdf") mime = "application/pdf";
+    if (ext === "svg") mime = "image/svg+xml";
+    const blob = new Blob([data], {type: mime});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "plot." + ext;
+    a.click();
+  } catch (e) {
+    alert("Run the code successfully first.");
+  }
+}
+</script>
+
+</body>
+</html>
