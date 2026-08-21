@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>EXP_3_1_1.html</title>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.23.4/full/pyodide.js"></script>
+
+<style>
+body {
+    background-color: #1e1e1e;
+    color: white;
+    font-family: monospace;
+    padding: 15px;
+}
+
+.editor {
+    display: flex;
+    border: 1px solid #444;
+    height: 320px;
+}
+
+#lineNumbers {
+    background: #111;
+    color: #00ff00;
+    padding: 10px 8px;
+    margin: 0;
+    text-align: right;
+    overflow: hidden;
+    white-space: pre;
+}
+
+#code {
+    flex: 1;
+    background: #111;
+    color: white;
+    border: none;
+    padding: 10px;
+    resize: none;
+    overflow: auto;
+    white-space: pre;
+}
+
+button {
+    margin-top: 10px;
+    margin-right: 6px;
+    padding: 8px 14px;
+    background: #007acc;
+    color: white;
+    border: none;
+    cursor: pointer;
+}
+
+#output {
+    background: #111;
+    padding: 10px;
+    margin-top: 10px;
+    min-height: 80px;
+    white-space: pre-wrap;
+}
+
+#plot {
+    margin-top: 10px;
+    border: 1px solid #555;
+    max-width: 100%;
+}
+</style>
+</head>
+
+<body>
+
+<h3>EXP_3_1_1.html</h3>
+
+<div class="editor">
+<pre id="lineNumbers"></pre>
+<textarea id="code" wrap="off">import numpy as np
+import matplotlib.pyplot as plt
+
+import matplotlib
+matplotlib.use("Agg")
+
+plt.rcParams.update({
+    'figure.facecolor': 'white',
+    'axes.facecolor': 'white',
+})
+
+#----------------------------------
+# Example: Plotting a Function
+#
+# This is NOT a Fresnel coefficient.
+#
+# Replace Y with your own equation.
+#----------------------------------
+
+X_deg = np.linspace(0,89,500)
+
+X = np.radians(X_deg)
+
+Y = (
+        (
+            1 - np.sin(X)
+        )**2
+    ) / (
+        1 + np.cos(X)**2
+    )
+
+plt.plot(X_deg,Y,linewidth=2)
+
+plt.xlabel("Angle (deg)")
+plt.ylabel("Y")
+
+plt.title("Example Function")
+
+plt.grid(True)
+
+print("Replace Y with your Fresnel equation.")
+
+plt.tight_layout()
+plt.savefig("plot.png")
+plt.savefig("plot.pdf")
+plt.savefig("plot.svg")</textarea>
+</div>
+
+<button onclick="runCode()">Run</button>
+<button onclick="downloadPlot('png')">Download PNG</button>
+<button onclick="downloadPlot('pdf')">Download PDF</button>
+<button onclick="downloadPlot('svg')">Download SVG</button>
+
+<div id="output"></div>
+<img id="plot"/>
+
+<script>
+let pyodideReady = loadPyodide();
+let pyodide;
+
+const code = document.getElementById("code");
+const lineNumbers = document.getElementById("lineNumbers");
+
+function updateLineNumbers() {
+    const lines = code.value.split("\n").length;
+    let numbers = "";
+    for (let i = 1; i <= lines; i++) numbers += i + "\n";
+    lineNumbers.textContent = numbers;
+}
+
+code.addEventListener("input", updateLineNumbers);
+code.addEventListener("scroll", () => lineNumbers.scrollTop = code.scrollTop);
+updateLineNumbers();
+
+async function runCode() {
+    pyodide = await pyodideReady;
+
+    document.getElementById("output").innerText = "Running...";
+    document.getElementById("plot").src = "";
+
+    await pyodide.loadPackage(["numpy","matplotlib"]);
+
+    try {
+        await pyodide.runPythonAsync(`
+import sys
+from io import StringIO
+sys.stdout = StringIO()
+`);
+
+        await pyodide.runPythonAsync(code.value);
+        let output = await pyodide.runPythonAsync("sys.stdout.getvalue()");
+        document.getElementById("output").innerText = output;
+
+        let img = pyodide.FS.readFile("plot.png", {encoding:"binary"});
+        let blob = new Blob([img], {type:"image/png"});
+        document.getElementById("plot").src = URL.createObjectURL(blob);
+    } catch(err) {
+        document.getElementById("output").innerText = err;
+    }
+}
+
+function downloadPlot(format) {
+    try {
+        let file = pyodide.FS.readFile("plot." + format, {encoding:"binary"});
+        let blob = new Blob([file], {type:"application/octet-stream"});
+        let link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = "plot." + format;
+        link.click();
+    } catch(err) {
+        alert("Run the code first to generate the plot.");
+    }
+}
+</script>
+
+</body>
+</html>
